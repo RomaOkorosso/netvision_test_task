@@ -1,0 +1,56 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: netvision-test-task-db
+    restart: always
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      POSTGRES_DB: "${POSTGRES_DB:-postgres}"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - "${POSTGRES_DATA:-./data/postgres}:/var/lib/postgresql/data"
+    env_file:
+      - .env
+    networks:
+      - default
+    healthcheck:
+      test: [ "CMD-SHELL", "sh -c 'pg_isready -U postgres -d ${POSTGRES_DB} -p ${POSTGRES_PORT}'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  fastapi-app:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT:-8000}:${APP_PORT:-8000}"
+    networks:
+      - default
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    command:
+      - bash -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port ${APP_PORT:-8000} --reload"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  client-app:
+    build: .
+    command: python client.py
+    volumes:
+      - .:/app
+    networks:
+      - default
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  default:
+    name: netvision-test-task-network
